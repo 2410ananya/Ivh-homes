@@ -1,0 +1,60 @@
+import requests
+import time
+import string
+
+# API URL for V3
+url = "http://35.200.185.69:8000/v3/autocomplete"
+cooldown_time = 45  # Cooldown after 80 requests
+batch_size = 80  # Max requests before cooldown
+
+# Allowed starting characters (letters & numbers only)
+start_chars = string.ascii_lowercase + string.digits
+# Allowed characters anywhere in the word
+valid_chars = start_chars + " +-. "
+
+def fetch_names():
+    collected_names = set()
+    search_queries = list(start_chars)  # Start with a-z, 0-9
+    seen_queries = set()  # To avoid duplicate searches
+    request_count = 0
+
+    while search_queries:
+        query = search_queries.pop(0)
+        if query in seen_queries:
+            continue
+        seen_queries.add(query)
+
+        response = requests.get(url, params={"query": query})
+
+        if response.status_code == 200:
+            data = response.json()
+            names = data.get("results", [])
+            collected_names.update(names)
+            print(f" Query '{query}' -> {len(names)} names found.")
+
+            # Add new prefixes based on results
+            for name in names:
+                if len(name) > len(query):
+                    new_prefix = name[: len(query) + 1]
+                    if new_prefix not in seen_queries and new_prefix[0] in start_chars:
+                        search_queries.append(new_prefix)
+
+        elif response.status_code == 429:
+            print("Rate Limit Hit! Waiting 45 seconds...")
+            time.sleep(cooldown_time)
+            search_queries.append(query)  # Retry after cooldown
+
+        request_count += 1
+        if request_count % batch_size == 0:
+            print(" Reached 80 requests, waiting 45 seconds...")
+            time.sleep(cooldown_time)
+
+        time.sleep(0.1)  # Small delay to prevent hitting the limit too fast
+
+    return collected_names
+
+# Run function
+all_names = fetch_names()
+print(f" Total Unique Names Collected: {len(all_names)}")
+print(all_names)
+
