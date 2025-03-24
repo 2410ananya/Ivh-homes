@@ -1,0 +1,54 @@
+import requests
+import time
+import string
+
+url = "http://35.200.185.69:8000/v2/autocomplete"
+cooldown_time = 40
+max_requests = 50  
+
+def fetch_names():
+    collected_names = set()
+    search_queries = list(string.ascii_lowercase + string.digits)  # Start with a-z and 0-9
+    seen_queries = set()
+    request_count = 0  
+
+    while search_queries:
+        query = search_queries.pop(0)
+        if query in seen_queries:
+            continue
+        seen_queries.add(query)
+
+        response = requests.get(url, params={"query": query})
+        request_count += 1
+
+        if response.status_code == 200:
+            data = response.json()
+            names = data.get("results", [])
+            collected_names.update(names)
+            print(f" Query '{query}' -> {len(names)} names found.")
+
+            # **Expand prefixes for deeper searches**
+            for name in names:
+                if len(name) > len(query):
+                    new_prefix = name[: len(query) + 1]
+                    if new_prefix not in seen_queries:
+                        search_queries.append(new_prefix)
+
+        elif response.status_code == 429:
+            print(f"⏳ Rate Limit Hit! Waiting {cooldown_time} seconds...")
+            time.sleep(cooldown_time)
+            search_queries.append(query)  
+
+        # **Cooldown after 50 requests**
+        if request_count % max_requests == 0:
+            print(f" Reached {max_requests} requests, waiting {cooldown_time} seconds...")
+            time.sleep(cooldown_time)
+
+      
+
+    return collected_names
+
+# Run function
+all_names = fetch_names()
+print(f" Total Unique Names Collected: {len(all_names)}")
+print(all_names)
